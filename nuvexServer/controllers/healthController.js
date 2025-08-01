@@ -1,0 +1,2 @@
+const { client, escrows } = require('../services/escrowService');
+module.exports = (req, res) => res.json({ status: 'healthy', connected: client?.isConnected() || false, activeEscrows: escrows.size });
