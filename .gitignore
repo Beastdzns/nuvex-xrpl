@@ -1,10 +1,10 @@
 # Compiler files
-cache/
-out/
+contracts/cache/
+contracts/out/
 dist/
 
 # Ignores development broadcast logs
-broadcast/
+contracts/broadcast/
 
 # Github files
 .github/
@@ -16,8 +16,13 @@ docs/
 .env
 
 # Generated files
-SUMMARY.md
 deployment-*.txt
 
 # Forge artifacts
 .forge-snapshots/
+
+*.orc
+.env
+/node_modules
+/dist
+/bridge-service/node_modules
