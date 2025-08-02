@@ -8,8 +8,8 @@ const { anvil } = require('prool/instances');
 const { randomBytes } = require('ethers');
 
 // Import contract artifacts
-const factoryContract = require('./dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json');
-const resolverContract = require('./dist/contracts/Resolver.sol/Resolver.json');
+const factoryContract = require('../../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json');
+const resolverContract = require('../../dist/contracts/Resolver.sol/Resolver.json');
 
 // Configuration based on test setup with environment variables
 const config = {

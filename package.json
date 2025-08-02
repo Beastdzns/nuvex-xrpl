@@ -4,7 +4,9 @@
   "description": "XRPL Escrow TEE Server",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "evm2xrp": "node src/examples/evm->xrp.js",
+    "xrp2evm": "node src/examples/xrp->evm.js"
   },
   "keywords": [],
   "author": "",
