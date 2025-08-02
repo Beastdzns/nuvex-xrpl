@@ -8,8 +8,8 @@ const { anvil } = require('prool/instances');
 const { randomBytes } = require('ethers');
 
 // Import contract artifacts
-const factoryContract = require('./dist/contracts/EscrowFactory.sol/EscrowFactory.json');
-const resolverContract = require('./dist/contracts/Resolver.sol/Resolver.json');
+const factoryContract = require('../../dist/contracts/EscrowFactory.sol/EscrowFactory.json');
+const resolverContract = require('../../dist/contracts/Resolver.sol/Resolver.json');
 
 // Configuration for EVM → XRPL swap
 const config = {
