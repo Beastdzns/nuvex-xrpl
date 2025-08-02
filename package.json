@@ -1,54 +1,20 @@
 {
-  "name": "nuvex-cross-chain-bridge",
+  "name": "nuvexserver",
   "version": "1.0.0",
-  "description": "Advanced cross-chain bridge for seamless asset transfers",
+  "description": "XRPL Escrow TEE Server",
+  "main": "src/index.js",
   "scripts": {
-    "test": "forge build && vitest run --reporter=verbose",
-    "test:watch": "forge build && vitest watch",
-    "test:debug": "forge build && vitest run --reporter=verbose --no-coverage",
-    "test:ui": "vitest --ui",
-    "lint": "eslint \"__tests__/**/*.ts\" \"src/**/*.ts\"",
-    "dev:bridge": "node bridge-service/server.js",
-    "build": "tsc && forge build"
+    "start": "node src/index.js"
   },
-  "devDependencies": {
-    "@1inch/eslint-config": "^v3.0.7",
-    "@1inch/tsconfig": "1.0.7",
-    "@eslint/compat": "1.1.0",
-    "@eslint/eslintrc": "^3.1.0",
-    "@eslint/js": "^9.10.0",
-    "@swc/core": "1.5.25",
-    "@types/node": "^22.16.0",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "@vitest/ui": "^2.0.5",
-    "eslint": "^8.56.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-config-standard": "^17.1.0",
-    "eslint-import-resolver-typescript": "^3.6.3",
-    "eslint-plugin-import": "^2.30.0",
-    "eslint-plugin-n": "^16.0.0",
-    "eslint-plugin-prettier": "^5.2.1",
-    "eslint-plugin-promise": "^6.6.0",
-    "eslint-plugin-unused-imports": "^4.1.4",
-    "prettier": "^3.2.5",
-    "typescript": "5.5.2",
-    "vitest": "^2.0.5",
-    "zod": "3.23.8"
-  },
-  "author": "Nuvex Team",
-  "engines": {
-    "node": ">=22"
-  },
-  "volta": {
-    "node": "22.5.1"
-  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
-    "@1inch/byte-utils": "^2.6.0",
-    "@1inch/cross-chain-sdk": "^0.1.15-rc.0",
-    "dotenv": "16.4.5",
-    "ethers": "6.13.2",
-    "prool": "0.0.24",
-    "xrpl": "^4.3.0"
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "ethers": "^6.15.0",
+    "express": "^5.1.0",
+    "xrpl": "^4.4.0"
   }
 }

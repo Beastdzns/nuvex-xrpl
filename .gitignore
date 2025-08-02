@@ -25,4 +25,3 @@ deployment-*.txt
 .env
 /node_modules
 /dist
-/bridge-service/node_modules
