@@ -1,7 +1,7 @@
 {
   "name": "nuvexserver",
   "version": "1.0.0",
-  "description": "XRPL Escrow TEE Server",
+  "description": "Nuvex XRPL Server",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
