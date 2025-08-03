@@ -5,14 +5,17 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "evm2xrp": "node src/examples/evm->xrp.js",
-    "xrp2evm": "node src/examples/xrp->evm.js"
+    "evm2xrp": "node src/examples/evm2xrp.js",
+    "xrp2evm": "node src/examples/xrp2evm.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@1inch/byte-utils": "2.6.0",
+    "@1inch/cross-chain-sdk": "v0.1.15-rc.0",
+    "prool": "0.0.24",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "ethers": "^6.15.0",

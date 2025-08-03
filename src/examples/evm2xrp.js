@@ -1,8 +1,8 @@
-require('dotenv/config');
+require('dotenv').config();
 const xrpl = require('xrpl');
 const { ethers } = require('ethers');
 const Sdk = require('@1inch/cross-chain-sdk');
-const { XRPLEscrowClient } = require('./nuvex-xrpl-server/client.js');
+const { XRPLEscrowClient } = require('../client/XRPLEscrowClient');
 const { createServer } = require('prool');
 const { anvil } = require('prool/instances');
 const { randomBytes } = require('ethers');
