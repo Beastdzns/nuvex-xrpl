@@ -322,8 +322,6 @@ class EscrowFactory {
             topics: [event.topicHash]
         });
 
-        console.log(`DEBUG: Found ${logs.length} SrcEscrowCreated logs`);
-
         if (logs.length === 0) {
             return [];
         }
@@ -331,9 +329,6 @@ class EscrowFactory {
         const [data] = logs.map((l) => this.iface.decodeEventLog(event, l.data));
         const immutables = data.at(0);
         const complement = data.at(1);
-
-        console.log('DEBUG: immutables:', immutables);
-        console.log('DEBUG: complement:', complement);
 
         return [
             Sdk.Immutables.new({
@@ -462,15 +457,6 @@ class EVMToXRPLSwap {
         this.src = await initChain(config.chain.source);
         console.log('✅ Ethereum fork initialized');
         
-        if (this.src.node) {
-            const nodeAddress = this.src.node.address();
-            console.log(`🌐 Anvil RPC running at: http://[${nodeAddress.address}]:${nodeAddress.port}`);
-            console.log(`📊 You can interact with this fork using any Ethereum tools pointing to this RPC`);
-            console.log(`🔍 To explore transactions visually, you can:`);
-            console.log(`   • Use Foundry's cast: cast tx <hash> --rpc-url http://127.0.0.1:${nodeAddress.port}`);
-            console.log(`   • Connect MetaMask to this RPC for manual exploration`);
-            console.log(`   • Use any Ethereum explorer by configuring it to this RPC endpoint`);
-        }
         console.log('');
 
         // Create wallets for EVM chain
@@ -613,25 +599,8 @@ class EVMToXRPLSwap {
         );
         console.log(`✅ Source escrow deployed, order filled: ${orderFillHash}`);
         console.log(`🔗 EVM Transaction: http://localhost:${this.src.node?.address()?.port || 'unknown'}/tx/${orderFillHash}\n`);
-        
-        // Display detailed transaction information
-        await displayTransactionDetails(this.src.provider, orderFillHash, "Order Fill Transaction");
-
-        // Debug: Check all events in the transaction receipt
-        const receipt = await this.src.provider.getTransactionReceipt(orderFillHash);
-        console.log('DEBUG: All events in transaction:', receipt.logs.length);
-        
-        receipt.logs.forEach((log, i) => {
-            console.log(`DEBUG: Event ${i}:`, {
-                address: log.address,
-                topics: log.topics.slice(0, 2), // Just show first 2 topics for brevity
-                data: log.data.slice(0, 100) + '...' // Truncate data
-            });
-        });
 
         const srcEscrowEvent = await this.srcFactory.getSrcDeployEvent(srcDeployBlock);
-        console.log('DEBUG: srcEscrowEvent length:', srcEscrowEvent.length);
-        console.log('DEBUG: srcEscrowEvent[0]:', srcEscrowEvent[0]);
         
         // 3. Create XRPL escrow (where resolver will lock XRP for user)
         console.log('🌊 Creating XRPL escrow...');
@@ -696,9 +665,6 @@ class EVMToXRPLSwap {
         
         console.log(`✅ Resolver successfully withdrew USDC: ${resolverWithdrawHash}`);
         console.log(`🔗 EVM Transaction: http://localhost:${this.src.node?.address()?.port || 'unknown'}/tx/${resolverWithdrawHash}\n`);
-        
-        // Display detailed transaction information
-        await displayTransactionDetails(this.src.provider, resolverWithdrawHash, "USDC Withdrawal Transaction");
 
         // 8. Verify final balances
         console.log('🔍 Verifying final balances...');
@@ -741,30 +707,6 @@ class EVMToXRPLSwap {
         }
         
         console.log('✅ Cleanup complete');
-    }
-}
-
-// Helper function to display transaction details
-async function displayTransactionDetails(provider, txHash, description) {
-    try {
-        const tx = await provider.getTransaction(txHash);
-        const receipt = await provider.getTransactionReceipt(txHash);
-        const block = await provider.getBlock(receipt.blockNumber);
-        
-        console.log(`📋 ${description} Details:`);
-        console.log(`   Hash: ${txHash}`);
-        console.log(`   Block: ${receipt.blockNumber}`);
-        console.log(`   Gas Used: ${receipt.gasUsed.toLocaleString()}`);
-        console.log(`   Status: ${receipt.status === 1 ? '✅ Success' : '❌ Failed'}`);
-        console.log(`   Timestamp: ${new Date(Number(block.timestamp) * 1000).toISOString()}`);
-        console.log(`   From: ${tx.from}`);
-        console.log(`   To: ${tx.to}`);
-        if (tx.value > 0) {
-            console.log(`   Value: ${ethers.formatEther(tx.value)} ETH`);
-        }
-        console.log(``);
-    } catch (error) {
-        console.log(`❌ Could not fetch transaction details: ${error.message}`);
     }
 }
 
