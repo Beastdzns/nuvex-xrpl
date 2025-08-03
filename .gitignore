@@ -2,6 +2,7 @@
 contracts/cache/
 contracts/out/
 dist/
+cache/
 
 # Ignores development broadcast logs
 contracts/broadcast/
