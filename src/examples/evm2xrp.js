@@ -627,8 +627,8 @@ class EVMToXRPLSwap {
       {
         salt: Sdk.randBigInt(1000n),
         maker: new Sdk.Address(await this.srcChainUser.getAddress()),
-        makingAmount: ethers.parseUnits("10", 6), // User offers 10 USDC
-        takingAmount: ethers.parseUnits("5", 6), // User wants equivalent of 5 XRP (in drops representation)
+        makingAmount: ethers.parseUnits("35", 6), // User offers 35 USDC
+        takingAmount: ethers.parseUnits("12", 6), // User wants equivalent of 12 XRP (in drops representation)
         makerAsset: new Sdk.Address(config.chain.source.tokens.USDC.address),
         takerAsset: new Sdk.Address(
           "0x0000000000000000000000000000000000000000"
@@ -738,7 +738,7 @@ class EVMToXRPLSwap {
       maker: this.resolverXRPLWallet.address.toString(), // Resolver provides XRP
       taker: this.userXRPLWallet.address.toString(), // User receives XRP
       token: "0x0000000000000000000000000000000000000000", // Native XRP
-      amount: "5000000", // 5 XRP in drops
+      amount: "12000000", // 12 XRP in drops
       safetyDeposit: "100000", // 0.1 XRP in drops
       timelocks: order.escrowExtension.timeLocks.build().toString(),
       type: "dst",
@@ -846,7 +846,7 @@ class EVMToXRPLSwap {
     console.log(`📋 Order Hash: ${orderHash}`);
     console.log(`🔐 Secret: ${secret}`);
     console.log(`🌊 XRPL Escrow: ${xrpEscrow.escrowId}`);
-    console.log(`💱 Swap: 10 USDC → 5 XRP`);
+    console.log(`💱 Swap: 35 USDC → 12 XRP`);
     console.log(`👤 User: Paid USDC on Ethereum, received XRP on XRPL`);
     console.log(`🤖 Resolver: Provided XRP on XRPL, received USDC on Ethereum`);
   }
