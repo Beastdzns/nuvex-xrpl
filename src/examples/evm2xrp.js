@@ -6,6 +6,8 @@ const XRPLEscrowClient = require('../client/XRPLEscrowClient');
 const { createServer } = require('prool');
 const { anvil } = require('prool/instances');
 const { randomBytes } = require('ethers');
+const axios = require('axios');
+const prompt = require('prompt-sync')();
 
 // Import contract artifacts
 const factoryContract = require('../../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json');
@@ -23,8 +25,28 @@ const config = {
             ownerPrivateKey: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
             tokens: {
                 USDC: {
-                    address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-                    donor: '0xd54F23BE482D9A58676590fCa79c8E43087f92fB'
+                    address: '0xA0B86991C6218A36C1D19D4a2e9EB0Ce3606EB48',
+                    donor: '0x28C6c06298d514Db089934071355E5743bf21d60', // Binance 14 hot wallet (has USDC)
+                    decimals: 6,
+                    coingeckoId: 'usd-coin'
+                },
+                USDT: {
+                    address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+                    donor: '0x28C6c06298d514Db089934071355E5743bf21d60', // Binance 14 hot wallet (large USDT holder)
+                    decimals: 6,
+                    coingeckoId: 'tether'
+                },
+                DAI: {
+                    address: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+                    donor: '0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643', // DSProxy contract with DAI
+                    decimals: 18,
+                    coingeckoId: 'dai'
+                },
+                ETH: {
+                    address: '0x0000000000000000000000000000000000000000', // Native ETH
+                    donor: '0x00000000219ab540356cBB839Cbe05303d7705Fa', // ETH 2.0 deposit contract
+                    decimals: 18,
+                    coingeckoId: 'ethereum'
                 }
             }
         }
@@ -40,6 +62,98 @@ const config = {
 // Test private keys
 const userPk = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 const resolverPk = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a';
+
+// Price fetching utility
+const priceUtils = {
+    async fetchTokenPrices() {
+        try {
+            console.log('📊 Fetching current token prices from CoinGecko...');
+            const tokenIds = Object.values(config.chain.source.tokens)
+                .map(token => token.coingeckoId)
+                .join(',');
+            
+            const response = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${tokenIds},ripple&vs_currencies=usd`);
+            
+            const prices = {
+                xrp: response.data.ripple?.usd || 0
+            };
+            
+            // Map prices to token symbols
+            Object.entries(config.chain.source.tokens).forEach(([symbol, tokenInfo]) => {
+                prices[symbol.toLowerCase()] = response.data[tokenInfo.coingeckoId]?.usd || 0;
+            });
+            
+            console.log('✅ Current prices fetched successfully\n');
+            return prices;
+        } catch (error) {
+            console.warn('⚠️  Failed to fetch prices from CoinGecko, using fallback prices');
+            return {
+                xrp: 0.50,
+                usdc: 1.00,
+                usdt: 1.00,
+                dai: 1.00,
+                eth: 2500.00
+            };
+        }
+    },
+
+    calculateSwapAmount(fromAmount, fromPrice, toPrice) {
+        return (fromAmount * fromPrice) / toPrice;
+    },
+
+    formatPrice(price) {
+        return price < 1 ? price.toFixed(6) : price.toFixed(2);
+    }
+};
+
+// User interaction utilities
+const userInterface = {
+    displayTokenOptions(availableTokens) {
+        console.log('\n💰 Available tokens for swap:');
+        availableTokens.forEach((token, index) => {
+            console.log(`  ${index + 1}. ${token}`);
+        });
+        console.log('');
+    },
+
+    selectToken(availableTokens, promptMessage) {
+        this.displayTokenOptions(availableTokens);
+        
+        while (true) {
+            const choice = prompt(`${promptMessage} (1-${availableTokens.length}): `);
+            const index = parseInt(choice) - 1;
+            
+            if (index >= 0 && index < availableTokens.length) {
+                return availableTokens[index];
+            }
+            console.log('❌ Invalid choice. Please try again.');
+        }
+    },
+
+    getSwapAmount(tokenSymbol) {
+        while (true) {
+            const amount = prompt(`💵 Enter the amount of ${tokenSymbol} you want to swap: `);
+            const numAmount = parseFloat(amount);
+            
+            if (numAmount > 0) {
+                return numAmount;
+            }
+            console.log('❌ Please enter a valid positive number.');
+        }
+    },
+
+    async displaySwapSummary(fromToken, fromAmount, toToken, toAmount, prices) {
+        console.log('\n📋 Swap Summary:');
+        console.log('================');
+        console.log(`From: ${fromAmount} ${fromToken} ($${priceUtils.formatPrice(fromAmount * prices[fromToken.toLowerCase()])})`);
+        console.log(`To: ${toAmount.toFixed(6)} ${toToken} ($${priceUtils.formatPrice(toAmount * prices[toToken.toLowerCase()])})`);
+        console.log(`Rate: 1 ${fromToken} = ${(toAmount / fromAmount).toFixed(6)} ${toToken}`);
+        console.log('');
+        
+        const confirm = prompt('✅ Confirm this swap? (y/n): ');
+        return confirm.toLowerCase() === 'y' || confirm.toLowerCase() === 'yes';
+    }
+};
 
 // XRPL utility functions
 const xrpUtils = {
@@ -165,8 +279,15 @@ class Wallet {
     }
 
     async topUpFromDonor(token, donor, amount) {
-        const donorWallet = await Wallet.fromAddress(donor, this.provider);
-        await donorWallet.transferToken(token, await this.getAddress(), amount);
+        if (token === ethers.ZeroAddress) {
+            // For ETH, transfer from donor to this wallet
+            const donorWallet = await Wallet.fromAddress(donor, this.provider);
+            await donorWallet.transfer(await this.getAddress(), amount);
+        } else {
+            // For ERC20 tokens
+            const donorWallet = await Wallet.fromAddress(donor, this.provider);
+            await donorWallet.transferToken(token, await this.getAddress(), amount);
+        }
     }
 
     async getAddress() {
@@ -178,7 +299,15 @@ class Wallet {
         if (currentApprove !== 0n) {
             await this.approveToken(tokenAddress, spender, 0n);
         }
-        await this.approveToken(tokenAddress, spender, ethers.MaxUint256);
+        
+        // Special handling for USDT - it requires approval to be 0 before setting new approval
+        if (tokenAddress.toLowerCase() === '0xdac17f958d2ee523a2206206994597c13d831ec7') {
+            // USDT: First approve 0, then approve max
+            await this.approveToken(tokenAddress, spender, 0n);
+            await this.approveToken(tokenAddress, spender, ethers.parseUnits('1000000', 6)); // 1M USDT
+        } else {
+            await this.approveToken(tokenAddress, spender, ethers.MaxUint256);
+        }
     }
 
     async getAllowance(token, spender) {
@@ -446,11 +575,66 @@ class EVMToXRPLSwap {
         this.resolver = null;
         this.userXRPLWallet = null;
         this.resolverXRPLWallet = null;
+        // User selection state
+        this.selectedToken = null;
+        this.swapAmount = 0;
+        this.prices = {};
+        this.xrpAmount = 0;
+    }
+
+    async selectTokenAndAmount() {
+        console.log('🎯 Welcome to EVM → XRPL Cross-Chain Swap!');
+        console.log('=========================================\n');
+        
+        // Fetch current prices
+        this.prices = await priceUtils.fetchTokenPrices();
+        
+        // Display current prices
+        console.log('💹 Current Market Prices:');
+        Object.entries(this.prices).forEach(([token, price]) => {
+            console.log(`  ${token.toUpperCase()}: $${priceUtils.formatPrice(price)}`);
+        });
+        console.log('');
+        
+        // Let user select token
+        const availableTokens = Object.keys(config.chain.source.tokens);
+        this.selectedToken = userInterface.selectToken(
+            availableTokens,
+            '🪙 Which token would you like to swap to XRP?'
+        );
+        
+        // Get swap amount
+        this.swapAmount = userInterface.getSwapAmount(this.selectedToken);
+        
+        // Calculate XRP amount
+        const tokenPrice = this.prices[this.selectedToken.toLowerCase()];
+        const xrpPrice = this.prices.xrp;
+        this.xrpAmount = priceUtils.calculateSwapAmount(this.swapAmount, tokenPrice, xrpPrice);
+        
+        // Show summary and confirm
+        const confirmed = await userInterface.displaySwapSummary(
+            this.selectedToken,
+            this.swapAmount,
+            'XRP',
+            this.xrpAmount,
+            this.prices
+        );
+        
+        if (!confirmed) {
+            console.log('❌ Swap cancelled by user');
+            process.exit(0);
+        }
+        
+        return {
+            token: this.selectedToken,
+            amount: this.swapAmount,
+            xrpAmount: this.xrpAmount
+        };
     }
 
     async initialize() {
-        console.log('🚀 Initializing Real EVM → XRPL Cross-Chain Swap');
-        console.log('===============================================\n');
+        console.log('\n🚀 Initializing EVM → XRPL Cross-Chain Swap');
+        console.log('==========================================\n');
 
         // Initialize source chain with fork infrastructure
         console.log('🔗 Setting up Ethereum fork...');
@@ -466,22 +650,40 @@ class EVMToXRPLSwap {
         // Initialize escrow factory
         this.srcFactory = new EscrowFactory(this.src.provider, this.src.escrowFactory);
 
-        // Set up USDC for user in source chain (user starts with USDC, wants XRP)
-        console.log('💰 Setting up initial USDC balance for user...');
-        await this.srcChainUser.topUpFromDonor(
-            config.chain.source.tokens.USDC.address,
-            config.chain.source.tokens.USDC.donor,
-            ethers.parseUnits('1000', 6)
-        );
-        await this.srcChainUser.unlimitedApprove(
-            config.chain.source.tokens.USDC.address,
-            config.chain.source.limitOrderProtocol
-        );
+        // Set up selected token for user in source chain
+        const tokenInfo = config.chain.source.tokens[this.selectedToken];
+        console.log(`💰 Setting up initial ${this.selectedToken} balance for user...`);
+        
+        if (this.selectedToken === 'ETH') {
+            // For ETH, we just need to ensure user has enough ETH
+            const ethBalance = await this.src.provider.getBalance(await this.srcChainUser.getAddress());
+            const requiredAmount = ethers.parseEther(this.swapAmount.toString());
+            if (ethBalance < requiredAmount) {
+                // Top up ETH from a donor if needed
+                await this.srcChainUser.topUpFromDonor(
+                    ethers.ZeroAddress, // ETH
+                    tokenInfo.donor,
+                    requiredAmount
+                );
+            }
+            // No approval needed for ETH
+        } else {
+            // For ERC20 tokens
+            await this.srcChainUser.topUpFromDonor(
+                tokenInfo.address,
+                tokenInfo.donor,
+                ethers.parseUnits(this.swapAmount.toString(), tokenInfo.decimals)
+            );
+            await this.srcChainUser.unlimitedApprove(
+                tokenInfo.address,
+                config.chain.source.limitOrderProtocol
+            );
+        }
 
         // Set up resolver contract wallet
         this.srcResolverContract = await Wallet.fromAddress(this.src.resolver, this.src.provider);
         
-        console.log('✅ USDC balances configured\n');
+        console.log(`✅ ${this.selectedToken} balances configured\n`);
 
         // Initialize resolver
         this.resolver = new Resolver(this.src.resolver, ethers.ZeroAddress);
@@ -509,8 +711,15 @@ class EVMToXRPLSwap {
         console.log(`📝 Resolver XRPL: ${this.resolverXRPLWallet.address} (provides XRP)\n`);
 
         // Check initial balances
-        const userUSDCBalance = await this.srcChainUser.tokenBalance(config.chain.source.tokens.USDC.address);
-        console.log(`💰 User initial USDC balance: ${ethers.formatUnits(userUSDCBalance, 6)} USDC`);
+        let userTokenBalance;
+        
+        if (this.selectedToken === 'ETH') {
+            userTokenBalance = await this.src.provider.getBalance(await this.srcChainUser.getAddress());
+            console.log(`💰 User initial ${this.selectedToken} balance: ${ethers.formatEther(userTokenBalance)} ${this.selectedToken}`);
+        } else {
+            userTokenBalance = await this.srcChainUser.tokenBalance(tokenInfo.address);
+            console.log(`💰 User initial ${this.selectedToken} balance: ${ethers.formatUnits(userTokenBalance, tokenInfo.decimals)} ${this.selectedToken}`);
+        }
         
         const userXRPResponse = await this.xrplClient.request({
             command: "account_info",
@@ -524,20 +733,30 @@ class EVMToXRPLSwap {
         console.log('🔄 Starting EVM → XRPL Atomic Swap');
         console.log('==================================\n');
 
-        // 1. Create cross-chain order (User wants to trade USDC for XRP)
+        // Round XRP amount to avoid decimal precision issues
+        const roundedXrpAmount = Math.round(this.xrpAmount * 1000000) / 1000000; // Round to 6 decimal places
+
+        // 1. Create cross-chain order (User wants to trade selected token for XRP)
         const secret = ethers.hexlify(randomBytes(32));
         console.log(`🔐 Generated secret: ${secret}`);
 
         const srcTimestamp = BigInt((await this.src.provider.getBlock('latest')).timestamp);
+        const tokenInfo = config.chain.source.tokens[this.selectedToken];
+        
+        // Convert amounts to proper units
+        const makingAmount = ethers.parseUnits(this.swapAmount.toString(), tokenInfo.decimals);
+        const xrpOrderAmount = ethers.parseUnits(roundedXrpAmount.toString(), 6); // Use 6 decimals for representation
+        
+        console.log(`💱 Swap Details: ${this.swapAmount} ${this.selectedToken} → ${roundedXrpAmount.toFixed(6)} XRP`);
         
         const order = Sdk.CrossChainOrder.new(
             new Sdk.Address(this.src.escrowFactory),
             {
                 salt: Sdk.randBigInt(1000n),
                 maker: new Sdk.Address(await this.srcChainUser.getAddress()),
-                makingAmount: ethers.parseUnits('10', 6), // User offers 10 USDC
-                takingAmount: ethers.parseUnits('5', 6), // User wants equivalent of 5 XRP (in drops representation)
-                makerAsset: new Sdk.Address(config.chain.source.tokens.USDC.address),
+                makingAmount: makingAmount, // User offers selected token amount
+                takingAmount: xrpOrderAmount, // User wants calculated XRP amount
+                makerAsset: new Sdk.Address(tokenInfo.address),
                 takerAsset: new Sdk.Address("0x0000000000000000000000000000000000000000") // XRP (represented as native token)
             },
             {
@@ -553,7 +772,7 @@ class EVMToXRPLSwap {
                 }),
                 srcChainId: config.chain.source.chainId,
                 dstChainId: Sdk.NetworkEnum.BINANCE, // Use BSC as placeholder for XRPL
-                srcSafetyDeposit: ethers.parseUnits('0.1', 6),
+                srcSafetyDeposit: ethers.parseUnits('0.1', tokenInfo.decimals),
                 dstSafetyDeposit: ethers.parseUnits('0.1', 6)
             },
             {
@@ -605,14 +824,18 @@ class EVMToXRPLSwap {
         // 3. Create XRPL escrow (where resolver will lock XRP for user)
         console.log('🌊 Creating XRPL escrow...');
         
+        // Convert XRP amount to drops (1 XRP = 1,000,000 drops) - use rounded amount
+        const xrpInDrops = Math.floor(roundedXrpAmount * 1000000).toString();
+        const safetyDepositDrops = '100000'; // 0.1 XRP in drops
+        
         const createEscrowPayload = {
             orderHash,
             hashlock: order.escrowExtension.hashLockInfo.toString(),
             maker: this.resolverXRPLWallet.address.toString(), // Resolver provides XRP
             taker: this.userXRPLWallet.address.toString(),     // User receives XRP
             token: "0x0000000000000000000000000000000000000000", // Native XRP
-            amount: '5000000', // 5 XRP in drops
-            safetyDeposit: '100000', // 0.1 XRP in drops
+            amount: xrpInDrops, // Calculated XRP amount in drops
+            safetyDeposit: safetyDepositDrops, // 0.1 XRP in drops
             timelocks: order.escrowExtension.timeLocks.build().toString(),
             type: 'dst'
         };
@@ -664,12 +887,15 @@ class EVMToXRPLSwap {
         );
         
         console.log(`✅ Resolver successfully withdrew USDC: ${resolverWithdrawHash}`);
-        console.log(`🔗 EVM Transaction: http://localhost:${this.src.node?.address()?.port || 'unknown'}/tx/${resolverWithdrawHash}\n`);
 
         // 8. Verify final balances
         console.log('🔍 Verifying final balances...');
-        const finalUserUSDC = await this.srcChainUser.tokenBalance(config.chain.source.tokens.USDC.address);
-        const finalResolverUSDC = await this.srcResolverContract.tokenBalance(config.chain.source.tokens.USDC.address);
+        const finalUserToken = this.selectedToken === 'ETH' 
+            ? await this.src.provider.getBalance(await this.srcChainUser.getAddress())
+            : await this.srcChainUser.tokenBalance(tokenInfo.address);
+        const finalResolverToken = this.selectedToken === 'ETH'
+            ? await this.src.provider.getBalance(this.src.resolver)
+            : await this.srcResolverContract.tokenBalance(tokenInfo.address);
         
         const finalUserXRPResponse = await this.xrplClient.request({
             command: "account_info",
@@ -677,18 +903,19 @@ class EVMToXRPLSwap {
         });
         const finalUserXRP = Number(xrpl.dropsToXrp(finalUserXRPResponse.result.account_data.Balance));
 
-        console.log(`📊 Final user USDC balance: ${ethers.formatUnits(finalUserUSDC, 6)} USDC`);
+        const tokenDecimals = tokenInfo.decimals;
+        console.log(`📊 Final user ${this.selectedToken} balance: ${ethers.formatUnits(finalUserToken, tokenDecimals)} ${this.selectedToken}`);
         console.log(`📊 Final user XRP balance: ${finalUserXRP} XRP`);
-        console.log(`📊 Resolver gained USDC: ${ethers.formatUnits(finalResolverUSDC, 6)} USDC`);
+        console.log(`📊 Resolver gained ${this.selectedToken}: ${ethers.formatUnits(finalResolverToken, tokenDecimals)} ${this.selectedToken}`);
 
         console.log('\n🎉 EVM → XRPL Cross-Chain Swap Complete!');
         console.log('=======================================');
         console.log(`📋 Order Hash: ${orderHash}`);
         console.log(`🔐 Secret: ${secret}`);
         console.log(`🌊 XRPL Escrow: ${xrpEscrow.escrowId}`);
-        console.log(`💱 Swap: 10 USDC → 5 XRP`);
-        console.log(`👤 User: Paid USDC on Ethereum, received XRP on XRPL`);
-        console.log(`🤖 Resolver: Provided XRP on XRPL, received USDC on Ethereum`);
+        console.log(`💱 Swap: ${this.swapAmount} ${this.selectedToken} → ${this.xrpAmount.toFixed(6)} XRP`);
+        console.log(`👤 User: Paid ${this.selectedToken} on Ethereum, received XRP on XRPL`);
+        console.log(`🤖 Resolver: Provided XRP on XRPL, received ${this.selectedToken} on Ethereum`);
     }
 
     async cleanup() {
@@ -715,6 +942,9 @@ async function main() {
     const swap = new EVMToXRPLSwap();
     
     try {
+        // Get user input for token selection and amount
+        await swap.selectTokenAndAmount();
+        
         await swap.initialize();
         await swap.executeSwap();
     } catch (error) {
@@ -731,4 +961,4 @@ if (require.main === module) {
     main().catch(console.error);
 }
 
-module.exports = { EVMToXRPLSwap, config, xrpUtils };
+module.exports = { EVMToXRPLSwap, config, xrpUtils, priceUtils, userInterface };
