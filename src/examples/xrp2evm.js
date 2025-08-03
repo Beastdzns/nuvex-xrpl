@@ -657,6 +657,41 @@ class XRPLToEVMSwap {
         };
     }
 
+    async checkUserBalance(stage = '') {
+        if (!this.dstChainUser || !this.selectedDestToken) {
+            return;
+        }
+
+        const destTokenInfo = config.chain.destination.tokens[this.selectedDestToken];
+        const userAddress = await this.dstChainUser.getAddress();
+        
+        try {
+            let balance;
+            let displayBalance;
+            
+            if (this.selectedDestToken === 'BNB') {
+                // For native BNB
+                balance = await this.dst.provider.getBalance(userAddress);
+                displayBalance = ethers.formatEther(balance);
+            } else {
+                // For ERC20 tokens
+                balance = await this.dstChainUser.tokenBalance(destTokenInfo.address);
+                displayBalance = ethers.formatUnits(balance, destTokenInfo.decimals);
+            }
+            
+            const stageText = stage ? ` ${stage}` : '';
+            console.log(`💰 User's ${this.selectedDestToken} balance${stageText}: ${parseFloat(displayBalance).toFixed(6)} ${this.selectedDestToken}`);
+            
+            return {
+                balance,
+                displayBalance: parseFloat(displayBalance)
+            };
+        } catch (error) {
+            console.warn(`⚠️  Could not fetch ${this.selectedDestToken} balance:`, error.message);
+            return null;
+        }
+    }
+
     async initialize() {
         console.log('🚀 Initializing Real XRPL → EVM Cross-Chain Swap');
         console.log('==============================================\n');
@@ -956,6 +991,10 @@ class XRPLToEVMSwap {
         console.log(`💰 Amount Swapped: ${this.xrpAmount} XRP → ${this.destTokenAmount.toFixed(6)} ${this.selectedDestToken}`);
         console.log(`👤 User: Provided XRP on XRPL, received ${this.selectedDestToken} on destination chain`);
         console.log(`🤖 Resolver: Provided ${this.selectedDestToken} on destination chain, received XRP on XRPL`);
+        
+        // Show final balance
+        console.log('');
+        await this.checkUserBalance('(final balance)');
     }
 
     async cleanup() {
@@ -994,7 +1033,14 @@ async function main() {
         await swap.selectTokenAndAmount();
         
         await swap.initialize();
+        
+        // Check initial balance after initialization
+        console.log('');
+        await swap.checkUserBalance('(before swap)');
+        console.log('');
+        
         await swap.executeSwap();
+        
     } catch (error) {
         console.error('❌ Swap failed:', error.message);
         console.error(error.stack);
