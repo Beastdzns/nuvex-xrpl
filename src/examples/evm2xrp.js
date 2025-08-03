@@ -572,7 +572,8 @@ class EVMToXRPLSwap {
     await xrpUtils.refuelWalletFromFaucet(this.userXRPLWallet, this.xrplClient);
     await xrpUtils.refuelWalletFromFaucet(
       this.resolverXRPLWallet,
-      this.xrplClient
+      this.xrplClient,
+      1000 // Fund resolver with 1000 XRP minimum
     );
     console.log("✅ XRPL wallets funded\n");
 
@@ -713,7 +714,6 @@ class EVMToXRPLSwap {
     const receipt = await this.src.provider.getTransactionReceipt(
       orderFillHash
     );
-    console.log("DEBUG: All events in transaction:", receipt.logs.length);
 
     receipt.logs.forEach((log, i) => {
       console.log(`DEBUG: Event ${i}:`, {
@@ -830,16 +830,6 @@ class EVMToXRPLSwap {
       xrpl.dropsToXrp(finalUserXRPResponse.result.account_data.Balance)
     );
 
-    console.log(
-      `📊 Final user USDC balance: ${ethers.formatUnits(finalUserUSDC, 6)} USDC`
-    );
-    console.log(`📊 Final user XRP balance: ${finalUserXRP} XRP`);
-    console.log(
-      `📊 Resolver gained USDC: ${ethers.formatUnits(
-        finalResolverUSDC,
-        6
-      )} USDC`
-    );
 
     console.log("\n🎉 EVM → XRPL Cross-Chain Swap Complete!");
     console.log("=======================================");
