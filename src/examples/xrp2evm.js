@@ -2,7 +2,7 @@ require('dotenv/config');
 const xrpl = require('xrpl');
 const { ethers } = require('ethers');
 const Sdk = require('@1inch/cross-chain-sdk');
-const { XRPLEscrowClient } = require('./nuvex-xrpl-server/client.js');
+const XRPLEscrowClient = require('../client/XRPLEscrowClient');
 const { createServer } = require('prool');
 const { anvil } = require('prool/instances');
 const { randomBytes } = require('ethers');
@@ -258,13 +258,26 @@ class Resolver {
         this.iface = new ethers.Interface(resolverContract.abi);
     }
 
-    deployDst(immutables) {
+    deployDst(immutables, srcTimestamp) {
+        // Calculate src cancellation timestamp (deployedAt + srcCancellation offset)
+        const srcCancellationTimestamp = srcTimestamp + immutables.timeLocks._srcCancellation;
+        
+        console.log(`🔧 deployDst params:`, {
+            dstImmutables: immutables.build(),
+            srcCancellationTimestamp: srcCancellationTimestamp.toString(),
+            value: immutables.safetyDeposit.toString()
+        });
+        
+        const data = this.iface.encodeFunctionData('deployDst', [
+            immutables.build(),
+            srcCancellationTimestamp
+        ]);
+        
+        console.log(`🔧 deployDst data: ${data}`);
+        
         return {
             to: this.dstAddress,
-            data: this.iface.encodeFunctionData('deployDst', [
-                immutables.build(),
-                immutables.timeLocks.toSrcTimeLocks().privateCancellation
-            ]),
+            data: data,
             value: immutables.safetyDeposit
         };
     }
@@ -473,6 +486,14 @@ class XRPLToEVMSwap {
 
         // Initialize resolver
         this.resolver = new Resolver(this.src.resolver, this.dst.resolver);
+        
+        console.log(`🔧 Debug resolver setup:`);
+        console.log(`  - Source resolver: ${this.src.resolver}`);
+        console.log(`  - Destination resolver: ${this.dst.resolver}`);
+        console.log(`  - DST chain resolver private key: ${resolverPk}`);
+        console.log(`  - DST chain resolver address: ${await this.dstChainResolver.getAddress()}`);
+        console.log(`  - Expected resolver address: ${ethers.computeAddress(resolverPk)}`);
+        console.log(``);
 
         // Initialize XRPL
         console.log('🌊 Connecting to XRPL testnet...');
@@ -574,7 +595,7 @@ class XRPLToEVMSwap {
         });
 
         const {txHash: dstDepositHash, blockTimestamp: dstDeployedAt} = 
-            await this.dstChainResolver.send(this.resolver.deployDst(dstImmutables));
+            await this.dstChainResolver.send(this.resolver.deployDst(dstImmutables, srcTimestamp));
         
         console.log(`✅ Destination escrow deployed: ${dstDepositHash}\n`);
 

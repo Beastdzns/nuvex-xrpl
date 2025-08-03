@@ -2,13 +2,13 @@ require('dotenv').config();
 const xrpl = require('xrpl');
 const { ethers } = require('ethers');
 const Sdk = require('@1inch/cross-chain-sdk');
-const { XRPLEscrowClient } = require('../client/XRPLEscrowClient');
+const XRPLEscrowClient = require('../client/XRPLEscrowClient');
 const { createServer } = require('prool');
 const { anvil } = require('prool/instances');
 const { randomBytes } = require('ethers');
 
 // Import contract artifacts
-const factoryContract = require('../../dist/contracts/EscrowFactory.sol/EscrowFactory.json');
+const factoryContract = require('../../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json');
 const resolverContract = require('../../dist/contracts/Resolver.sol/Resolver.json');
 
 // Configuration for EVM → XRPL swap
@@ -367,9 +367,15 @@ async function getProvider(cnf) {
         };
     }
 
-    // Use manually started anvil instance on port 8545
+    const node = createServer({
+        instance: anvil({forkUrl: cnf.url, chainId: cnf.chainId}),
+        limit: 1
+    });
+    await node.start();
+
+    const address = node.address();
     const provider = new ethers.JsonRpcProvider(
-        'http://127.0.0.1:8545', 
+        `http://[${address.address}]:${address.port}/1`, 
         cnf.chainId, 
         {
             cacheTimeout: -1,
@@ -377,17 +383,12 @@ async function getProvider(cnf) {
         }
     );
 
-    return { provider, node: null };
+    return { provider, node };
 }
 
 async function deploy(json, params, provider, deployer) {
-    const factory = new ethers.ContractFactory(json.abi, json.bytecode, deployer);
-    
-    // Set explicit gas limit to avoid estimation errors
-    const deployTx = await factory.getDeployTransaction(...params);
-    deployTx.gasLimit = 5000000; // 5M gas limit
-    
-    const deployed = await factory.deploy(...params, { gasLimit: 5000000 });
+    const deployed = await new ethers.ContractFactory(json.abi, json.bytecode, deployer)
+        .deploy(...params);
     await deployed.waitForDeployment();
     return await deployed.getAddress();
 }
@@ -395,14 +396,6 @@ async function deploy(json, params, provider, deployer) {
 async function initChain(cnf) {
     const {node, provider} = await getProvider(cnf);
     const deployer = new ethers.Wallet(cnf.ownerPrivateKey, provider);
-
-    // Check deployer balance
-    const deployerBalance = await provider.getBalance(deployer.address);
-    console.log(`💰 Deployer balance: ${ethers.formatEther(deployerBalance)} ETH`);
-    
-    if (deployerBalance < ethers.parseEther('1')) {
-        console.log('⚠️  Low deployer balance, but continuing (Anvil should have sufficient ETH)');
-    }
 
     // Deploy EscrowFactory
     const escrowFactory = await deploy(
@@ -418,7 +411,7 @@ async function initChain(cnf) {
         provider,
         deployer
     );
-    console.log(`📋 [${cnf.chainId}] Escrow factory contract deployed to ${escrowFactory}`);
+    console.log(`[${cnf.chainId}] Escrow factory contract deployed to`, escrowFactory);
 
     // Deploy Resolver contract
     const resolver = await deploy(
@@ -431,7 +424,7 @@ async function initChain(cnf) {
         provider,
         deployer
     );
-    console.log(`📋 [${cnf.chainId}] Resolver contract deployed to ${resolver}`);
+    console.log(`[${cnf.chainId}] Resolver contract deployed to`, resolver);
 
     return {node, provider, resolver, escrowFactory};
 }
