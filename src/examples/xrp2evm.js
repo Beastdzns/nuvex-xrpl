@@ -309,10 +309,15 @@ class Wallet {
     }
 
     async tokenBalance(token) {
-        const tokenContract = new ethers.Contract(token.toString(), [
-            'function balanceOf(address) view returns (uint256)'
-        ], this.provider);
-        return tokenContract.balanceOf(await this.getAddress());
+        try {
+            const tokenContract = new ethers.Contract(token.toString(), [
+                'function balanceOf(address) view returns (uint256)'
+            ], this.provider);
+            return await tokenContract.balanceOf(await this.getAddress());
+        } catch (error) {
+            console.warn(`⚠️  Could not fetch token balance for ${token}:`, error.message);
+            return 0n; // Return 0 if balance check fails
+        }
     }
 
     async topUpFromDonor(token, donor, amount) {
@@ -940,8 +945,8 @@ class XRPLToEVMSwap {
         });
         
         console.log(`✅ XRPL escrow funded`);
-        console.log(`🔗 Maker deposit: https://testnet.xrpl.org/transactions/${makerDepositHash}`);
-        console.log(`🔗 Taker deposit: https://testnet.xrpl.org/transactions/${takerDepositHash}\n`);
+        console.log(`🔗 Escrow Deposit: https://testnet.xrpl.org/transactions/${makerDepositHash}`);
+        console.log(`🔗 Security Deposit: https://testnet.xrpl.org/transactions/${takerDepositHash}\n`);
 
         // 5. Wait for timelock and then withdraw
         console.log('⏳ Waiting for withdrawal timelock...');
